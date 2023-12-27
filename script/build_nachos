@@ -1,0 +1,10 @@
+#!/bin/sh
+# Check for the correct number of arguments
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <project path>"
+    exit 1
+fi
+
+cd $1/code/build.linux
+make clean
+make

@@ -1,0 +1,73 @@
+# root
+DISK_0
+# .vscode
+
+*.o
+*.coff
+*.log
+
+# build.cygwin
+build.cygwin/*
+!build.cygwin/Makefile
+!build.cygwin/Makefile.dep
+# build.linux
+build.linux/*
+!build.linux/Makefile
+!build.linux/Makefile.dep
+# build.macosx
+build.macosx/*
+!build.macosx/Makefile
+!build.macosx/Makefile.dep
+# filesys
+filesys/*
+!filesys/*.cc
+!filesys/*.h
+# lib
+lib/*
+!lib/*.cc
+!lib/*.h
+# machine
+machine/*
+!machine/*.cc
+!machine/*.h
+# network
+network/*
+!network/*.cc
+!network/*.h
+# test
+test/*
+!test/Makefile
+!test/Makefile.dep
+!test/*.S
+!test/*.c
+!test/*.h
+code/test/add
+code/test/halt
+code/test/createFile
+code/test/fileIO_test1
+code/test/fileIO_test2
+code/test/fileIO_test3
+code/test/consoleIO_test1
+code/test/consoleIO_test2
+code/test/hw3t1
+code/test/hw3t2
+code/test/hw3t3
+code/test/hw3t4
+code/test/sort
+code/test/segments
+code/test/matmult
+code/test/LotOfAdd
+code/test/FS_test1
+code/test/FS_test2
+code/test/DISK_0
+code/test/*.test
+# threads
+threads/*
+!threads/*.S
+!threads/*.cc
+!threads/*.h
+# userprog
+userprog/*
+!userprog/*.S
+!userprog/*.cc
+!userprog/*.h

@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "iostream": "cpp",
+        "new": "cpp",
+        "syscall.h": "c",
+        "stdio.h": "c",
+        "errno.h": "c",
+        "*.tcc": "cpp",
+        "typeinfo": "cpp",
+        "initializer_list": "cpp",
+        "array": "cpp",
+        "ostream": "cpp"
+    }
+}

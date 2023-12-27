@@ -1,0 +1,37 @@
+{
+    "configurations": [
+        {
+            "name": "(gdb) Launch",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/code/build.linux/nachos",
+            "args": [
+                "-d",
+                "mu",
+                "-cp",
+                "FS_test1",
+                "/FS_test1",
+                "-e",
+                "/FS_test1"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/code/test",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "preLaunchTask": "build_nachos",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

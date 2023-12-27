@@ -1,0 +1,24 @@
+#!/bin/sh
+
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <project path> <nachose arg1> <nachose arg2>"
+    exit 1
+fi
+project_path="$1"
+nachose_arg1="$2"
+nachose_arg2="$3"
+
+# Build Nachos
+bash "$project_path/script/build_nachos" "$project_path"
+# Run Tests
+echo "***************************************"
+cd $project_path/code/test
+make clean
+make distclean
+make FS_test1 FS_test2
+../build.linux/nachos $nachose_arg1
+../build.linux/nachos $nachose_arg2
+echo "***************************************"
+
+# sh ./script/mp4_demo . '-cp FS_test1 /FS_test1' '-e /FS_test1' > mp4_cout0.log 2> mp4_cerr0.log
+
