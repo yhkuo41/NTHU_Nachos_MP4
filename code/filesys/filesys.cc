@@ -77,7 +77,6 @@
 //
 //	"format" -- should we initialize the disk?
 //----------------------------------------------------------------------
-
 FileSystem::FileSystem(bool format)
 {
     DEBUG(dbgFile, "Initializing the file system.");
@@ -97,7 +96,6 @@ FileSystem::FileSystem(bool format)
 
         // Second, allocate space for the data blocks containing the contents
         // of the directory and bitmap files.  There better be enough space!
-
         ASSERT(mapHdr->Allocate(freeMap, FreeMapFileSize));
         ASSERT(dirHdr->Allocate(freeMap, DirectoryFileSize));
 
@@ -105,7 +103,6 @@ FileSystem::FileSystem(bool format)
         // We need to do this before we can "Open" the file, since open
         // reads the file header off of disk (and currently the disk has garbage
         // on it!).
-
         DEBUG(dbgFile, "Writing headers back to disk.");
         mapHdr->WriteBack(FreeMapSector);
         dirHdr->WriteBack(DirectorySector);
@@ -113,7 +110,6 @@ FileSystem::FileSystem(bool format)
         // OK to open the bitmap and directory files now
         // The file system operations assume these two files are left open
         // while Nachos is running.
-
         freeMapFile = new OpenFile(FreeMapSector);
         directoryFile = new OpenFile(DirectorySector);
 
@@ -122,7 +118,6 @@ FileSystem::FileSystem(bool format)
         // empty; but the bitmap has been changed to reflect the fact that
         // sectors on the disk have been allocated for the file headers and
         // to hold the file data for the directory and bitmap.
-
         DEBUG(dbgFile, "Writing bitmap and directory back to disk.");
         freeMap->WriteBack(freeMapFile); // flush changes to disk
         directory->WriteBack(directoryFile);
@@ -184,7 +179,6 @@ FileSystem::~FileSystem()
 //	"name" -- name of file to be created
 //	"initialSize" -- size of file to be created
 //----------------------------------------------------------------------
-
 bool FileSystem::Create(char *name, int initialSize)
 {
     Directory *directory;
@@ -199,20 +193,28 @@ bool FileSystem::Create(char *name, int initialSize)
     directory->FetchFrom(directoryFile);
 
     if (directory->Find(name) != -1)
+    {
         success = FALSE; // file is already in directory
+    }
     else
     {
         freeMap = new PersistentBitmap(freeMapFile, NumSectors);
         sector = freeMap->FindAndSet(); // find a sector to hold the file header
         if (sector == -1)
+        {
             success = FALSE; // no free block for file header
+        }
         else if (!directory->Add(name, sector))
+        {
             success = FALSE; // no space in directory
+        }
         else
         {
             hdr = new FileHeader;
             if (!hdr->Allocate(freeMap, initialSize))
+            {
                 success = FALSE; // no space on disk for data
+            }
             else
             {
                 success = TRUE;
@@ -238,8 +240,7 @@ bool FileSystem::Create(char *name, int initialSize)
 //
 //	"name" -- the text name of the file to be opened
 //----------------------------------------------------------------------
-
-OpenFile * FileSystem::Open(char *name)
+OpenFile *FileSystem::Open(char *name)
 {
     Directory *directory = new Directory(NumDirEntries);
     OpenFile *openFile = NULL;
@@ -249,7 +250,9 @@ OpenFile * FileSystem::Open(char *name)
     directory->FetchFrom(directoryFile);
     sector = directory->Find(name);
     if (sector >= 0)
+    {
         openFile = new OpenFile(sector); // name was found in directory
+    }
     delete directory;
     return openFile; // return NULL if not found
 }
@@ -267,7 +270,6 @@ OpenFile * FileSystem::Open(char *name)
 //
 //	"name" -- the text name of the file to be removed
 //----------------------------------------------------------------------
-
 bool FileSystem::Remove(char *name)
 {
     Directory *directory;
@@ -304,11 +306,9 @@ bool FileSystem::Remove(char *name)
 // FileSystem::List
 // 	List all the files in the file system directory.
 //----------------------------------------------------------------------
-
 void FileSystem::List()
 {
     Directory *directory = new Directory(NumDirEntries);
-
     directory->FetchFrom(directoryFile);
     directory->List();
     delete directory;
@@ -323,7 +323,6 @@ void FileSystem::List()
 //	      the contents of the file header
 //	      the data in the file
 //----------------------------------------------------------------------
-
 void FileSystem::Print()
 {
     FileHeader *bitHdr = new FileHeader;

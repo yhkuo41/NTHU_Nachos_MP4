@@ -24,7 +24,7 @@
 class PersistentBitmap : public Bitmap
 {
 public:
-    PersistentBitmap(OpenFile *file, int numItems); //initialize bitmap from disk
+    PersistentBitmap(OpenFile *file, int numItems); // initialize bitmap from disk
     PersistentBitmap(int numItems);                 // or don't...
 
     ~PersistentBitmap(); // deallocate bitmap

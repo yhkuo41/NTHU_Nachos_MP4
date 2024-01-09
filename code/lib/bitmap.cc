@@ -17,7 +17,6 @@
 //
 //	"numItems" is the number of bits in the bitmap.
 //----------------------------------------------------------------------
-
 Bitmap::Bitmap(int numItems)
 {
     int i;
@@ -41,7 +40,6 @@ Bitmap::Bitmap(int numItems)
 // Bitmap::~Bitmap
 // 	De-allocate a bitmap.
 //----------------------------------------------------------------------
-
 Bitmap::~Bitmap()
 {
     delete[] map;
@@ -53,7 +51,6 @@ Bitmap::~Bitmap()
 //
 //	"which" is the number of the bit to be set.
 //----------------------------------------------------------------------
-
 void Bitmap::Mark(int which)
 {
     ASSERT(which >= 0 && which < numBits);
@@ -69,7 +66,6 @@ void Bitmap::Mark(int which)
 //
 //	"which" is the number of the bit to be cleared.
 //----------------------------------------------------------------------
-
 void Bitmap::Clear(int which)
 {
     ASSERT(which >= 0 && which < numBits);
@@ -85,7 +81,6 @@ void Bitmap::Clear(int which)
 //
 //	"which" is the number of the bit to be tested.
 //----------------------------------------------------------------------
-
 bool Bitmap::Test(int which) const
 {
     ASSERT(which >= 0 && which < numBits);
@@ -108,7 +103,6 @@ bool Bitmap::Test(int which) const
 //
 //	If no bits are clear, return -1.
 //----------------------------------------------------------------------
-
 int Bitmap::FindAndSet()
 {
     for (int i = 0; i < numBits; i++)
@@ -127,7 +121,6 @@ int Bitmap::FindAndSet()
 // 	Return the number of clear bits in the bitmap.
 //	(In other words, how many bits are unallocated?)
 //----------------------------------------------------------------------
-
 int Bitmap::NumClear() const
 {
     int count = 0;
@@ -149,7 +142,6 @@ int Bitmap::NumClear() const
 //	Could be done in a number of ways, but we just print the #'s of
 //	all the bits that are set in the bitmap.
 //----------------------------------------------------------------------
-
 void Bitmap::Print() const
 {
     cout << "Bitmap set:\n";
@@ -167,7 +159,6 @@ void Bitmap::Print() const
 // Bitmap::SelfTest
 // 	Test whether this module is working.
 //----------------------------------------------------------------------
-
 void Bitmap::SelfTest()
 {
     int i;
