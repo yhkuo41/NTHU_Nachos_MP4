@@ -51,8 +51,8 @@
 void ExceptionHandler(ExceptionType which)
 {
 	int type = kernel->machine->ReadRegister(2);
-	int val;
-	int status, exit, threadID, programID;
+	int val, initialSize;
+	int status, exit, threadID, programID, fileID, numChar;
 	DEBUG(dbgSys, "Received Exception " << which << " type: " << type << "\n");
 	switch (which)
 	{
@@ -75,14 +75,93 @@ void ExceptionHandler(ExceptionType which)
 			SysHalt();
 			ASSERTNOTREACHED();
 			break;
-		// MP4 mod tag
+			// MP4 mod tag
 #ifdef FILESYS_STUB
 		case SC_Create:
 			val = kernel->machine->ReadRegister(4);
 			{
 				char *filename = &(kernel->machine->mainMemory[val]);
-				//cout << filename << endl;
+				// cout << filename << endl;
 				status = SysCreate(filename);
+				kernel->machine->WriteRegister(2, (int)status);
+			}
+			kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));
+			kernel->machine->WriteRegister(PCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			kernel->machine->WriteRegister(NextPCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			return;
+			ASSERTNOTREACHED();
+			break;
+#else
+		case SC_Create:
+			val = kernel->machine->ReadRegister(4);
+			initialSize = kernel->machine->ReadRegister(5);
+			{
+				char *filename = &(kernel->machine->mainMemory[val]);
+				// cout << filename << endl;
+				status = SysCreate(filename, initialSize);
+				kernel->machine->WriteRegister(2, (int)status);
+			}
+			kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));
+			kernel->machine->WriteRegister(PCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			kernel->machine->WriteRegister(NextPCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			return;
+			ASSERTNOTREACHED();
+			break;
+		case SC_Open:
+			DEBUG(dbgMp4, "SC_Open\n");
+			val = kernel->machine->ReadRegister(4);
+			{
+				char *filename = &(kernel->machine->mainMemory[val]);
+				DEBUG(dbgMp4, "filename: " << filename << "\n");
+				status = SysOpen(filename);
+				kernel->machine->WriteRegister(2, (int)status);
+			}
+			kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));
+			kernel->machine->WriteRegister(PCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			kernel->machine->WriteRegister(NextPCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			return;
+			ASSERTNOTREACHED();
+			break;
+		case SC_Write:
+			DEBUG(dbgMp4, "SC_Write\n");
+			val = kernel->machine->ReadRegister(4);
+			{
+				char *buffer = &(kernel->machine->mainMemory[val]);
+				numChar = kernel->machine->ReadRegister(5);
+				fileID = kernel->machine->ReadRegister(6);
+				DEBUG(dbgMp4, "buffer: " << buffer << " numChar: " << numChar << " fileID: " << fileID << "\n");
+				status = SysWrite(buffer, numChar, fileID);
+				kernel->machine->WriteRegister(2, (int)status);
+			}
+			kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));
+			kernel->machine->WriteRegister(PCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			kernel->machine->WriteRegister(NextPCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			return;
+			ASSERTNOTREACHED();
+			break;
+		case SC_Read:
+			DEBUG(dbgMp4, "SC_Read\n");
+			val = kernel->machine->ReadRegister(4);
+			{
+				char *buffer = &(kernel->machine->mainMemory[val]);
+				numChar = kernel->machine->ReadRegister(5);
+				fileID = kernel->machine->ReadRegister(6);
+				DEBUG(dbgMp4, "buffer: " << buffer << " numChar: " << numChar << " fileID: " << fileID << "\n");
+				status = SysRead(buffer, numChar, fileID);
+				kernel->machine->WriteRegister(2, (int)status);
+			}
+			kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));
+			kernel->machine->WriteRegister(PCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			kernel->machine->WriteRegister(NextPCReg, kernel->machine->ReadRegister(PCReg) + 4);
+			return;
+			ASSERTNOTREACHED();
+			break;
+		case SC_Close:
+			DEBUG(dbgMp4, "SC_Close\n");
+			fileID = kernel->machine->ReadRegister(4);
+			{
+				DEBUG(dbgMp4, "fileID: " << fileID << "\n");
+				status = SysClose(fileID);
 				kernel->machine->WriteRegister(2, (int)status);
 			}
 			kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));

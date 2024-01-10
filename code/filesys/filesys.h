@@ -92,7 +92,11 @@ public:
 	// Create a file (UNIX creat)
 
 	OpenFile *Open(char *name); // Open a file (UNIX open)
-
+	// The OpenAFile function is used for kernel open system call
+	OpenFileId OpenAFile(char *name);
+	int WriteFile_(char *buffer, int size, OpenFileId id);
+	int ReadFile(char *buffer, int size, OpenFileId id);
+	int CloseFile(OpenFileId id);
 	bool Remove(char *name); // Delete a file (UNIX unlink)
 
 	void List(); // List all the files in the file system

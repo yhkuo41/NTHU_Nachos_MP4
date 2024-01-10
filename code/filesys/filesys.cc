@@ -349,4 +349,23 @@ void FileSystem::Print()
     delete directory;
 }
 
+OpenFileId FileSystem::OpenAFile(char *name)
+{
+    // TODO
+}
+
+int FileSystem::WriteFile_(char *buffer, int size, OpenFileId id)
+{
+    // TODO
+}
+
+int FileSystem::ReadFile(char *buffer, int size, OpenFileId id)
+{
+    // TODO
+}
+
+int FileSystem::CloseFile(OpenFileId id)
+{
+    // TODO
+}
 #endif // FILESYS_STUB
