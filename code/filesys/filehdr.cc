@@ -23,7 +23,6 @@
 // of liability and disclaimer of warranty provisions.
 
 #include "copyright.h"
-
 #include "filehdr.h"
 #include "debug.h"
 #include "synchdisk.h"
@@ -36,12 +35,7 @@
 //	since all the information should be initialized by Allocate or FetchFrom.
 //	The purpose of this function is to keep valgrind happy.
 //----------------------------------------------------------------------
-FileHeader::FileHeader()
-{
-	numBytes = -1;
-	numSectors = -1;
-	memset(dataSectors, -1, sizeof(dataSectors));
-}
+FileHeader::FileHeader() : numBytes(-1), numSectors(-1), startSector(INVALID_SECTOR), endSector(INVALID_SECTOR) {}
 
 //----------------------------------------------------------------------
 // MP4 mod tag
@@ -50,10 +44,7 @@ FileHeader::FileHeader()
 //	However, if you decide to add some "in-core" data in header
 //	Always remember to deallocate their space or you will leak memory
 //----------------------------------------------------------------------
-FileHeader::~FileHeader()
-{
-	// nothing to do now
-}
+FileHeader::~FileHeader() {}
 
 //----------------------------------------------------------------------
 // FileHeader::Allocate
@@ -73,11 +64,22 @@ bool FileHeader::Allocate(PersistentBitmap *freeMap, int fileSize)
 	{
 		return FALSE; // not enough space
 	}
-	for (int i = 0; i < numSectors; i++)
+	ASSERT(dataBlocks.empty() && startSector == INVALID_SECTOR && endSector == INVALID_SECTOR);
+	for (int i = 0; i < numSectors; ++i)
 	{
-		dataSectors[i] = freeMap->FindAndSet();
+		int freeBlock = freeMap->FindAndSet();
 		// since we checked that there was enough free space, we expect this to succeed
-		ASSERT(dataSectors[i] >= 0);
+		ASSERT(freeBlock >= 0);
+		if (!i) // first
+		{
+			startSector = freeBlock;
+		}
+		else // others
+		{
+			dataBlocks.back().next = freeBlock;
+		}
+		dataBlocks.push_back(DataBlock());
+		endSector = freeBlock;
 	}
 	return TRUE;
 }
@@ -90,11 +92,16 @@ bool FileHeader::Allocate(PersistentBitmap *freeMap, int fileSize)
 //----------------------------------------------------------------------
 void FileHeader::Deallocate(PersistentBitmap *freeMap)
 {
-	for (int i = 0; i < numSectors; i++)
+	ASSERT(static_cast<int>(dataBlocks.size()) == numSectors);
+	for (int i = 0, next = startSector; i < numSectors; ++i)
 	{
-		ASSERT(freeMap->Test((int)dataSectors[i])); // ought to be marked!
-		freeMap->Clear((int)dataSectors[i]);
+		ASSERT(next >= 0 && freeMap->Test(next)); // ought to be marked!
+		freeMap->Clear(next);
+		next = dataBlocks[i].next;
 	}
+	startSector = INVALID_SECTOR;
+	endSector = INVALID_SECTOR;
+	dataBlocks.clear();
 }
 
 //----------------------------------------------------------------------
@@ -105,12 +112,25 @@ void FileHeader::Deallocate(PersistentBitmap *freeMap)
 //----------------------------------------------------------------------
 void FileHeader::FetchFrom(int sector)
 {
-	kernel->synchDisk->ReadSector(sector, (char *)this);
-
-	/*
-		MP4 Hint:
-		After you add some in-core informations, you will need to rebuild the header's structure
-	*/
+	ASSERT(dataBlocks.empty() && startSector == INVALID_SECTOR && endSector == INVALID_SECTOR);
+	int buf[SectorSize / sizeof(int)];
+	kernel->synchDisk->ReadSector(sector, (char *)buf);
+	numBytes = buf[0];
+	numSectors = buf[1];
+	startSector = buf[2];
+	endSector = buf[3];
+	// rebuild in-core data blocks
+	for (int i = 0, cur = startSector; i < numSectors; ++i)
+	{
+		kernel->synchDisk->ReadSector(cur, (char *)buf);
+		DataBlock db = DataBlock(buf[NUM_DATA]);
+		for (int i = 0; i < NUM_DATA; ++i)
+		{
+			db.data[i] = buf[i];
+		}
+		dataBlocks.push_back(db);
+		cur = db.next;
+	}
 }
 
 //----------------------------------------------------------------------
@@ -121,16 +141,18 @@ void FileHeader::FetchFrom(int sector)
 //----------------------------------------------------------------------
 void FileHeader::WriteBack(int sector)
 {
-	kernel->synchDisk->WriteSector(sector, (char *)this);
-
-	/*
-		MP4 Hint:
-		After you add some in-core informations, you may not want to write all fields into disk.
-		Use this instead:
-		char buf[SectorSize];
-		memcpy(buf + offset, &dataToBeWritten, sizeof(dataToBeWritten));
-		...
-	*/
+	int buf[SectorSize / sizeof(int)] = {numBytes, numSectors, startSector, endSector};
+	kernel->synchDisk->WriteSector(sector, (char *)buf);
+	for (int i = 0, cur = startSector; i < numSectors; ++i)
+	{
+		for (int j = 0; j < NUM_DATA; ++j)
+		{
+			buf[j] = dataBlocks[i].data[j];
+		}
+		buf[NUM_DATA] = dataBlocks[i].next;
+		kernel->synchDisk->WriteSector(cur, (char *)buf);
+		cur = dataBlocks[i].next;
+	}
 }
 
 //----------------------------------------------------------------------
@@ -144,7 +166,12 @@ void FileHeader::WriteBack(int sector)
 //----------------------------------------------------------------------
 int FileHeader::ByteToSector(int offset)
 {
-	return (dataSectors[offset / SectorSize]);
+	int i = (offset / SectorSize) - 1;
+	if (i == -1)
+	{
+		return startSector;
+	}
+	return dataBlocks[i].next;
 }
 
 //----------------------------------------------------------------------
@@ -163,19 +190,24 @@ int FileHeader::FileLength()
 //----------------------------------------------------------------------
 void FileHeader::Print()
 {
-	int i, j, k;
+	int i, j, k, cur;
 	char *data = new char[SectorSize];
-
-	printf("FileHeader contents.  File size: %d.  File blocks:\n", numBytes);
-	for (i = 0; i < numSectors; i++)
+	cout << "FileHeader contents:" << endl
+		 << "1. File size: " << numBytes << " bytes (" << numSectors << " sectors)" << endl
+		 << "2. FileHeader size in disk: " << (sizeof(FileHeader) - sizeof(dataBlocks)) << " bytes" << endl
+		 << "3. FileHeader size in memory: " << (sizeof(FileHeader) + sizeof(DataBlock) * numSectors) << " bytes" << endl
+		 << "4. Data blocks: " << endl;
+	for (i = 0, cur = startSector; i < numSectors; i++)
 	{
-		printf("%d ", dataSectors[i]);
+		ASSERT(cur != INVALID_SECTOR);
+		cout << cur << " ";
+		cur = dataBlocks[i].next;
 	}
 	printf("\nFile contents:\n");
-	for (i = k = 0; i < numSectors; i++)
+	for (i = k = 0, cur = startSector; i < numSectors; i++)
 	{
-		kernel->synchDisk->ReadSector(dataSectors[i], data);
-		for (j = 0; (j < SectorSize) && (k < numBytes); j++, k++)
+		kernel->synchDisk->ReadSector(cur, data);
+		for (j = 0; (j < DATA_SIZE) && (k < numBytes); j++, k++)
 		{
 			if ('\040' <= data[j] && data[j] <= '\176') // isprint(data[j])
 			{
@@ -187,6 +219,7 @@ void FileHeader::Print()
 			}
 		}
 		printf("\n");
+		cur = dataBlocks[i].next;
 	}
 	delete[] data;
 }

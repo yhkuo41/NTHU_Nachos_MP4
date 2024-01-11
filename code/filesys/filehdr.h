@@ -16,9 +16,21 @@
 
 #include "disk.h"
 #include "pbitmap.h"
+#include <vector>
+#define INVALID_SECTOR -1
+// How many bytes of data can be stored in a data block
+const int DATA_SIZE = SectorSize - sizeof(int);
+// How many integers (data) can be stored in a data block
+const int NUM_DATA = DATA_SIZE / sizeof(int);
 
-#define NumDirect ((SectorSize - 2 * sizeof(int)) / sizeof(int))
-#define MaxFileSize (NumDirect * SectorSize)
+class DataBlock
+{
+	friend class FileHeader;
+	int data[NUM_DATA];
+	// the sector number of the next data block
+	int next;
+	DataBlock(int next = INVALID_SECTOR) : next(next) { fill(data, data + NUM_DATA, 0); }
+};
 
 // The following class defines the Nachos "file header" (in UNIX terms,
 // the "i-node"), describing where on disk to find all of the data in the file.
@@ -57,26 +69,18 @@ public:
 	void Print();
 
 private:
-	/*
-		MP4 hint:
-		You will need a data structure to store more information in a header.
-		Fields in a class can be separated into disk part and in-core part.
-		Disk part are data that will be written into disk.
-		In-core part are data only lies in memory, and are used to maintain the data structure of this class.
-		In order to implement a data structure, you will need to add some "in-core" data
-		to maintain data structure.
+	//---disk part---//
 
-		Disk Part - numBytes, numSectors, dataSectors occupy exactly 128 bytes and will be
-		written to a sector on disk.
-		In-core part - none
-
-	*/
 	// Number of bytes in the file
 	int numBytes;
 	// Number of data sectors in the file
 	int numSectors;
-	// Disk sector numbers for each data block in the file
-	int dataSectors[NumDirect];
-};
+	int startSector;
+	int endSector;
+	//---disk part---//
+	//---in-core part---//
 
+	vector<DataBlock> dataBlocks;
+	//---in-core part---//
+};
 #endif // FILEHDR_H

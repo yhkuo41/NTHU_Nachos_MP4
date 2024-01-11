@@ -41,14 +41,18 @@ public:
     void Clear(int which);      // Clear the "nth" bit
     bool Test(int which) const; // Is the "nth" bit set?
     int FindAndSet();           // Return the # of a clear bit, and as a side
-        // effect, set the bit.
-        // If no bits are clear, return -1.
-    int NumClear() const; // Return the number of clear bits
+                                // effect, set the bit.
+                                // If no bits are clear, return -1.
+    int NumClear() const;       // Return the number of clear bits
 
     void Print() const; // Print contents of bitmap
     void SelfTest();    // Test whether bitmap is working
 
 protected:
+    // Number of clear bits
+    int numClear;
+    // Start looking for clear bit here. Assuming only the first clear bit will be marked.
+    int cur;
     int numBits;       // number of bits in the bitmap
     int numWords;      // number of words of bitmap storage
                        // (rounded up if numBits is not a

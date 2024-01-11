@@ -33,9 +33,14 @@
 #ifndef FS_H
 #define FS_H
 
+#include <vector>
 #include "copyright.h"
 #include "sysdep.h"
 #include "openfile.h"
+#include "pbitmap.h"
+
+#define PATH_NAME_MAX_LEN 256
+#define FILE_OPEN_LIMIT 20
 
 typedef int OpenFileId;
 
@@ -76,38 +81,71 @@ public:
 };
 
 #else // FILESYS
+class FileFinder
+{
+	friend class FileSystem;
+	// is the file exist?
+	bool exist;
+	// sector number of the parent dir
+	int pFhSector;
+	// sector number of the file header
+	int fhSector;
+	string filename;
+
+	FileFinder();
+	static vector<string> splitPath(const char *name, bool &exceedPathLenLimit);
+	// find the file by path (name) and set the result to private fields
+	void find(const char *name, bool isDir, OpenFile *root);
+	void deleteOpenFile(OpenFile *openfile, OpenFile *root);
+};
+
 class FileSystem
 {
+	friend class FileFinder;
+
 public:
-	FileSystem(bool format); // Initialize the file system.
-							 // Must be called *after* "synchDisk"
-							 // has been initialized.
-							 // If "format", there is nothing on
-							 // the disk, so initialize the directory
-							 // and the bitmap of free blocks.
+	// Initialize the file system. Must be called *after* "synchDisk" has been initialized. If "format",
+	// there is nothing on the disk, so initialize the directory and the bitmap of free blocks.
+	FileSystem(bool format);
 	// MP4 mod tag
 	~FileSystem();
-
-	bool Create(char *name, int initialSize);
 	// Create a file (UNIX creat)
-
-	OpenFile *Open(char *name); // Open a file (UNIX open)
-	// The OpenAFile function is used for kernel open system call
+	bool Create(char *name, int initialSize);
+	// Open a file (UNIX open)
+	OpenFile *Open(char *name);
+	// This function is used for kernel open system call
 	OpenFileId OpenAFile(char *name);
 	int WriteFile_(char *buffer, int size, OpenFileId id);
 	int ReadFile(char *buffer, int size, OpenFileId id);
 	int CloseFile(OpenFileId id);
-	bool Remove(char *name); // Delete a file (UNIX unlink)
-
-	void List(); // List all the files in the file system
-
-	void Print(); // List all the files and their contents
+	// Delete a file (UNIX unlink)
+	bool Remove(const char *name, bool recursive);
+	// List all the files in the file system
+	void List(char *name, bool recursive);
+	// List all the files and their contents
+	void Print();
+	bool Mkdir(char *name);
 
 private:
-	OpenFile *freeMapFile;	 // Bit map of free disk blocks,
-							 // represented as a file
-	OpenFile *directoryFile; // "Root" directory -- list of
-							 // file names, represented as a file
+	// Bit map of free disk blocks, represented as a file
+	OpenFile *freeMapFile;
+	// "Root" directory -- list of file names, represented as a file
+	OpenFile *directoryFile;
+	OpenFile *OpenFileTable[FILE_OPEN_LIMIT];
+	bool isValidFileId(OpenFileId id);
+	/**
+	 * @brief Create a File Or Dir
+	 *
+	 * @param name absolute path
+	 * @param isDir is this a dir or a file
+	 * @param initialSize file size (will be ignored if this is a dir)
+	 * @return true success
+	 * @return false fail
+	 */
+	bool createFileOrDir(char *name, bool isDir, int initialSize);
+	bool recursivelyRemove(const char *name);
+	// Return data and header sectors to freeMap
+	void returnSectorsToFreeMap(int fhSector, PersistentBitmap *freeMap);
 };
 
 #endif // FILESYS

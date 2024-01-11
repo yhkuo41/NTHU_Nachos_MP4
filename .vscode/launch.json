@@ -6,8 +6,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/code/build.linux/nachos",
             "args": [
+                "-f",
                 "-d",
-                "mu",
+                "4fd",
                 "-cp",
                 "FS_test1",
                 "/FS_test1",

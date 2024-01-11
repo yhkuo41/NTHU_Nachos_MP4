@@ -20,5 +20,4 @@ make FS_test1 FS_test2
 ../build.linux/nachos $nachose_arg2
 echo "***************************************"
 
-# sh ./script/mp4_demo . '-cp FS_test1 /FS_test1' '-e /FS_test1' > mp4_cout0.log 2> mp4_cerr0.log
-
+# sh ./script/mp4_demo . '-f -d 4fd -cp FS_test1 /FS_test1' '-e /FS_test1' > mp4_cout0.log 2> mp4_cerr0.log
