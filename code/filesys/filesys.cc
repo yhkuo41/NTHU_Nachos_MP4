@@ -263,21 +263,7 @@ bool FileSystem::recursivelyRemove(const char *name)
     Directory *dir = new Directory(NumDirEntries);
     dir->FetchFrom(openfh);
     ASSERT(dir->RemoveAll(freeMap));
-    if (finder.pFhSector == INVALID_SECTOR)
-    { // root dir, directly write back after removing all files/dirs
-        dir->WriteBack(directoryFile);
-    }
-    else
-    { // other dir, remove itself
-        returnSectorsToFreeMap(finder.fhSector, freeMap);
-        OpenFile *openPfh = new OpenFile(finder.pFhSector);
-        Directory *pDir = new Directory(NumDirEntries);
-        pDir->FetchFrom(openPfh);
-        ASSERT(pDir->Remove(finder.filename.c_str(), DIR));
-        pDir->WriteBack(openPfh);
-        delete openPfh;
-        delete pDir;
-    }
+    dir->WriteBack(openfh);
     freeMap->WriteBack(freeMapFile);
     delete freeMap;
     delete openfh;
