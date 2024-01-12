@@ -108,11 +108,9 @@ void ExceptionHandler(ExceptionType which)
 			ASSERTNOTREACHED();
 			break;
 		case SC_Open:
-			DEBUG(dbgMp4, "SC_Open\n");
 			val = kernel->machine->ReadRegister(4);
 			{
 				char *filename = &(kernel->machine->mainMemory[val]);
-				DEBUG(dbgMp4, "filename: " << filename << "\n");
 				status = SysOpen(filename);
 				kernel->machine->WriteRegister(2, (int)status);
 			}
@@ -123,13 +121,11 @@ void ExceptionHandler(ExceptionType which)
 			ASSERTNOTREACHED();
 			break;
 		case SC_Write:
-			DEBUG(dbgMp4, "SC_Write\n");
 			val = kernel->machine->ReadRegister(4);
 			{
 				char *buffer = &(kernel->machine->mainMemory[val]);
 				numChar = kernel->machine->ReadRegister(5);
 				fileID = kernel->machine->ReadRegister(6);
-				DEBUG(dbgMp4, "buffer: " << buffer << " numChar: " << numChar << " fileID: " << fileID << "\n");
 				status = SysWrite(buffer, numChar, fileID);
 				kernel->machine->WriteRegister(2, (int)status);
 			}
@@ -140,13 +136,11 @@ void ExceptionHandler(ExceptionType which)
 			ASSERTNOTREACHED();
 			break;
 		case SC_Read:
-			DEBUG(dbgMp4, "SC_Read\n");
 			val = kernel->machine->ReadRegister(4);
 			{
 				char *buffer = &(kernel->machine->mainMemory[val]);
 				numChar = kernel->machine->ReadRegister(5);
 				fileID = kernel->machine->ReadRegister(6);
-				DEBUG(dbgMp4, "buffer: " << buffer << " numChar: " << numChar << " fileID: " << fileID << "\n");
 				status = SysRead(buffer, numChar, fileID);
 				kernel->machine->WriteRegister(2, (int)status);
 			}
@@ -157,10 +151,8 @@ void ExceptionHandler(ExceptionType which)
 			ASSERTNOTREACHED();
 			break;
 		case SC_Close:
-			DEBUG(dbgMp4, "SC_Close\n");
 			fileID = kernel->machine->ReadRegister(4);
 			{
-				DEBUG(dbgMp4, "fileID: " << fileID << "\n");
 				status = SysClose(fileID);
 				kernel->machine->WriteRegister(2, (int)status);
 			}

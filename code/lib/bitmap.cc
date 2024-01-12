@@ -22,7 +22,8 @@ Bitmap::Bitmap(int numItems)
     int i;
 
     ASSERT(numItems > 0);
-
+    numClear = numItems;
+    cur = 0;
     numBits = numItems;
     numWords = divRoundUp(numBits, BitsInWord);
     map = new unsigned int[numWords];
@@ -54,9 +55,12 @@ Bitmap::~Bitmap()
 void Bitmap::Mark(int which)
 {
     ASSERT(which >= 0 && which < numBits);
-
+    if (!Test(which))
+    {
+        cur = which;
+        --numClear;
+    }
     map[which / BitsInWord] |= 1 << (which % BitsInWord);
-
     ASSERT(Test(which));
 }
 
@@ -69,9 +73,12 @@ void Bitmap::Mark(int which)
 void Bitmap::Clear(int which)
 {
     ASSERT(which >= 0 && which < numBits);
-
+    cur = min(cur, which);
+    if (Test(which))
+    {
+        ++numClear;
+    }
     map[which / BitsInWord] &= ~(1 << (which % BitsInWord));
-
     ASSERT(!Test(which));
 }
 
@@ -105,7 +112,11 @@ bool Bitmap::Test(int which) const
 //----------------------------------------------------------------------
 int Bitmap::FindAndSet()
 {
-    for (int i = 0; i < numBits; i++)
+    if (!numClear)
+    {
+        return -1;
+    }
+    for (int i = cur; i < numBits; i++)
     {
         if (!Test(i))
         {
@@ -113,7 +124,7 @@ int Bitmap::FindAndSet()
             return i;
         }
     }
-    return -1;
+    ASSERTNOTREACHED();
 }
 
 //----------------------------------------------------------------------
@@ -123,16 +134,7 @@ int Bitmap::FindAndSet()
 //----------------------------------------------------------------------
 int Bitmap::NumClear() const
 {
-    int count = 0;
-
-    for (int i = 0; i < numBits; i++)
-    {
-        if (!Test(i))
-        {
-            count++;
-        }
-    }
-    return count;
+    return numClear;
 }
 
 //----------------------------------------------------------------------
@@ -167,13 +169,13 @@ void Bitmap::SelfTest()
 
     ASSERT(NumClear() == numBits); // bitmap must be empty
     ASSERT(FindAndSet() == 0);
-    Mark(31);
-    ASSERT(Test(0) && Test(31));
+    Mark(1);
+    ASSERT(Test(0) && Test(1));
 
-    ASSERT(FindAndSet() == 1);
+    ASSERT(FindAndSet() == 2);
     Clear(0);
     Clear(1);
-    Clear(31);
+    Clear(2);
 
     for (i = 0; i < numBits; i++)
     {

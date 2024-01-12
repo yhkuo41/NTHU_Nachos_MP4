@@ -16,10 +16,13 @@
 
 #ifndef DIRECTORY_H
 #define DIRECTORY_H
-
 #include "openfile.h"
+#include "debug.h"
+#define NumDirEntries 64
 // for simplicity, we assume file names are <= 9 characters long
 #define FileNameMaxLen 9
+#define FILE false
+#define DIR true
 
 // The following class defines a "directory entry", representing a file
 // in the directory.  Each entry gives the name of the file, and where
@@ -30,6 +33,8 @@
 class DirectoryEntry
 {
 public:
+    // Is this a dir entry?
+    bool isDir;
     // Is this directory entry in use?
     bool inUse;
     // Location on disk to find the FileHeader for this file
@@ -59,13 +64,17 @@ public:
     // Write modifications to directory contents back to disk
     void WriteBack(OpenFile *file);
     // Find the sector number of the FileHeader for file: "name"
-    int Find(char *name);
+    int Find(const char *name, bool isDir);
     // Add a file name into the directory
-    bool Add(char *name, int newSector);
+    bool Add(const char *name, int newSector, bool isDir);
     // Remove a file from the directory
-    bool Remove(char *name);
-    // Print the names of all the files in the directory
+    bool Remove(const char *name, bool isDir);
+    // Remove all files and directories under this directory
+    bool RemoveAll(PersistentBitmap *freeMap);
+    // Print the names of all the files in the directory (command -l)
     void List();
+    // command -lr
+    void RecursivelyList(int depth);
     // Verbose print of the contents of the directory -- all the file names and their contents.
     void Print();
 
@@ -76,12 +85,19 @@ private:
         Disk part: table
         In-core part: tableSize
     */
-    // Number of directory entries
-    int tableSize;
+    //---disk part---//
+
     // Table of pairs: <file name, file header location>
     DirectoryEntry *table;
+    //---disk part---//
+    //---in-core part---//
+
+    // Number of directory entries
+    int tableSize;
+    //---in-core part---//
+
     // Find the index into the directory table corresponding to "name"
-    int FindIndex(char *name);
+    int FindIndex(const char *name, bool isDir);
 };
 
 #endif // DIRECTORY_H

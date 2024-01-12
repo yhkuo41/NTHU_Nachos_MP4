@@ -16,9 +16,20 @@
 
 #include "disk.h"
 #include "pbitmap.h"
+#include <vector>
 
-#define NumDirect ((SectorSize - 2 * sizeof(int)) / sizeof(int))
-#define MaxFileSize (NumDirect * SectorSize)
+#define INVALID_SECTOR -1
+#define LEVEL_LIMIT 4
+const int NUM_DIRECT = (SectorSize - 2 * sizeof(int)) / sizeof(int);
+// 3840 bytes = 3.75 KB (30 sectors)
+const int MAX_SIZE_L0 = NUM_DIRECT * SectorSize;
+// 115200 bytes = 112.5 KB (900 sectors)
+const int MAX_SIZE_L1 = NUM_DIRECT * NUM_DIRECT * SectorSize;
+// 3456000 bytes = 3375 KB (27000 sectors)
+const int MAX_SIZE_L2 = NUM_DIRECT * NUM_DIRECT * NUM_DIRECT * SectorSize;
+// 103680000 bytes = 101250 KB = 98.876953125 MB (810000 sectors)
+const int MAX_SIZE_L3 = NUM_DIRECT * NUM_DIRECT * NUM_DIRECT * NUM_DIRECT * SectorSize;
+const int MAX_SIZE[LEVEL_LIMIT] = {MAX_SIZE_L0, MAX_SIZE_L1, MAX_SIZE_L2, MAX_SIZE_L3};
 
 // The following class defines the Nachos "file header" (in UNIX terms,
 // the "i-node"), describing where on disk to find all of the data in the file.
@@ -54,29 +65,29 @@ public:
 	// Return the length of the file in bytes
 	int FileLength();
 	// Print the contents of the file.
-	void Print();
+	void Print(bool printContent = TRUE);
 
 private:
-	/*
-		MP4 hint:
-		You will need a data structure to store more information in a header.
-		Fields in a class can be separated into disk part and in-core part.
-		Disk part are data that will be written into disk.
-		In-core part are data only lies in memory, and are used to maintain the data structure of this class.
-		In order to implement a data structure, you will need to add some "in-core" data
-		to maintain data structure.
+	// ====================disk part====================
 
-		Disk Part - numBytes, numSectors, dataSectors occupy exactly 128 bytes and will be
-		written to a sector on disk.
-		In-core part - none
-
-	*/
 	// Number of bytes in the file
 	int numBytes;
 	// Number of data sectors in the file
-	int numSectors;
+	int numDataSectors;
 	// Disk sector numbers for each data block in the file
-	int dataSectors[NumDirect];
+	int dataSectors[NUM_DIRECT];
+	// ====================disk part====================
+
+	// ====================in-core part====================
+
+	// index: logical sector, value: physical sector
+	vector<int> dataSectorMapping;
+	FileHeader *children[NUM_DIRECT];
+	// ====================in-core part====================
+	int whichLv(int fileSize);
+	void clear();
+	bool Allocate(PersistentBitmap *bitMap, int fileSize, vector<int> &pSectors);
+	void FetchFrom(int sectorNumber, vector<int> &pSectors);
 };
 
 #endif // FILEHDR_H

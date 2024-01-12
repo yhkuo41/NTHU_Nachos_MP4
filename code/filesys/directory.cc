@@ -43,6 +43,7 @@ Directory::Directory(int size)
     tableSize = size;
     for (int i = 0; i < tableSize; i++)
     {
+        table[i].isDir = FALSE;
         table[i].inUse = FALSE;
     }
 }
@@ -85,11 +86,11 @@ void Directory::WriteBack(OpenFile *file)
 //
 //	"name" -- the file name to look up
 //----------------------------------------------------------------------
-int Directory::FindIndex(char *name)
+int Directory::FindIndex(const char *name, bool isDir)
 {
     for (int i = 0; i < tableSize; i++)
     {
-        if (table[i].inUse && !strncmp(table[i].name, name, FileNameMaxLen))
+        if (table[i].inUse && table[i].isDir == isDir && !strncmp(table[i].name, name, FileNameMaxLen))
         {
             return i;
         }
@@ -105,14 +106,14 @@ int Directory::FindIndex(char *name)
 //
 //	"name" -- the file name to look up
 //----------------------------------------------------------------------
-int Directory::Find(char *name)
+int Directory::Find(const char *name, bool isDir)
 {
-    int i = FindIndex(name);
+    int i = FindIndex(name, isDir);
     if (i != -1)
     {
         return table[i].sector;
     }
-    return -1;
+    return INVALID_SECTOR;
 }
 
 //----------------------------------------------------------------------
@@ -125,9 +126,9 @@ int Directory::Find(char *name)
 //	"name" -- the name of the file being added
 //	"newSector" -- the disk sector containing the added file's header
 //----------------------------------------------------------------------
-bool Directory::Add(char *name, int newSector)
+bool Directory::Add(const char *name, int newSector, bool isDir)
 {
-    if (FindIndex(name) != -1)
+    if (FindIndex(name, isDir) != -1)
     {
         return FALSE;
     }
@@ -136,6 +137,7 @@ bool Directory::Add(char *name, int newSector)
     {
         if (!table[i].inUse)
         {
+            table[i].isDir = isDir;
             table[i].inUse = TRUE;
             strncpy(table[i].name, name, FileNameMaxLen);
             table[i].sector = newSector;
@@ -152,28 +154,81 @@ bool Directory::Add(char *name, int newSector)
 //
 //	"name" -- the file name to be removed
 //----------------------------------------------------------------------
-bool Directory::Remove(char *name)
+bool Directory::Remove(const char *name, bool isDir)
 {
-    int i = FindIndex(name);
+    int i = FindIndex(name, isDir);
     if (i == -1)
     {
         return FALSE; // name not in directory
     }
     table[i].inUse = FALSE;
+    DEBUG(dbgMp4, "remove " << name << " (dir)");
     return TRUE;
 }
 
-//----------------------------------------------------------------------
-// Directory::List
-// 	List all the file names in the directory.
-//----------------------------------------------------------------------
+bool Directory::RemoveAll(PersistentBitmap *freeMap)
+{
+    for (int i = 0; i < tableSize; i++)
+    {
+        if (!table[i].inUse)
+        {
+            continue;
+        }
+        if (table[i].isDir)
+        {
+            OpenFile *openFh = new OpenFile(table[i].sector);
+            Directory *dir = new Directory(NumDirEntries);
+            dir->FetchFrom(openFh);
+            dir->RemoveAll(freeMap);
+            delete openFh;
+            delete dir;
+        }
+        DEBUG(dbgMp4, "remove " << table[i].name << " (dir or file)");
+        ASSERT(freeMap->Test(table[i].sector));
+        freeMap->Clear(table[i].sector); // return header sector
+        FileHeader *fh = new FileHeader();
+        fh->FetchFrom(table[i].sector);
+        fh->Deallocate(freeMap); // return data sectors
+        delete fh;
+
+        table[i].inUse = FALSE;
+    }
+    return TRUE;
+}
+
 void Directory::List()
 {
     for (int i = 0; i < tableSize; i++)
     {
         if (table[i].inUse)
         {
-            printf("%s\n", table[i].name);
+            cout << table[i].name << endl;
+        }
+    }
+}
+
+void Directory::RecursivelyList(int depth)
+{
+    for (int i = 0; i < tableSize; i++)
+    {
+        if (!table[i].inUse)
+        {
+            continue;
+        }
+        // indentation
+        for (int j = 0; j < depth * 4; ++j)
+        {
+            cout << " ";
+        }
+        cout << "[" << (table[i].isDir ? "D" : "F") << "] " << table[i].name << endl;
+        if (table[i].isDir)
+        {
+            OpenFile *f = new OpenFile(table[i].sector);
+            Directory *dir = new Directory(NumDirEntries);
+            dir->FetchFrom(f);
+            delete f;
+            dir->RecursivelyList(depth + 1);
+            delete dir;
         }
     }
 }

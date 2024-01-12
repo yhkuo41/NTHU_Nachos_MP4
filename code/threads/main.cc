@@ -29,6 +29,7 @@
 //    -r removes a Nachos file from the file system
 //    -l lists the contents of the Nachos directory
 //    -D prints the contents of the entire file system
+//    -h print the file header of the file/dir
 //
 //  Note: the file system flags are not used if the stub filesystem
 //        is being used
@@ -129,7 +130,6 @@ void Print(char *name)
     OpenFile *openFile;
     int i, amountRead;
     char *buffer;
-
     if ((openFile = kernel->fileSystem->Open(name)) == NULL)
     {
         printf("Print: unable to open file %s\n", name);
@@ -144,16 +144,6 @@ void Print(char *name)
 
     delete openFile; // close the Nachos file
     return;
-}
-
-//----------------------------------------------------------------------
-// MP4 mod tag
-// CreateDirectory
-//      Create a new directory with "name"
-//----------------------------------------------------------------------
-static void CreateDirectory(char *name)
-{
-    // MP4 Assignment
 }
 
 //----------------------------------------------------------------------
@@ -188,10 +178,12 @@ int main(int argc, char **argv)
     // MP4 mod tag
     char *createDirectoryName = NULL;
     char *listDirectoryName = NULL;
+    char *printHeaderName = NULL;
     bool mkdirFlag = false;
     bool recursiveListFlag = false;
     bool recursiveRemoveFlag = false;
-#endif //FILESYS_STUB
+    bool printHeaderFlag = false;
+#endif // FILESYS_STUB
 
     // some command line arguments are handled here.
     // those that set kernel parameters are handled in
@@ -284,7 +276,14 @@ int main(int argc, char **argv)
         {
             dumpFlag = true;
         }
-#endif //FILESYS_STUB
+        else if (strcmp(argv[i], "-h") == 0)
+        {
+            ASSERT(i + 1 < argc);
+            printHeaderFlag = true;
+            printHeaderName = argv[i + 1];
+            i++;
+        }
+#endif // FILESYS_STUB
         else if (strcmp(argv[i], "-u") == 0)
         {
             cout << "Partial usage: nachos [-z -d debugFlags]\n";
@@ -294,7 +293,7 @@ int main(int argc, char **argv)
             cout << "Partial usage: nachos [-cp UnixFile NachosFile]\n";
             cout << "Partial usage: nachos [-p fileName] [-r fileName]\n";
             cout << "Partial usage: nachos [-l] [-D]\n";
-#endif //FILESYS_STUB
+#endif // FILESYS_STUB
         }
     }
     debug = new Debug(debugArg);
@@ -325,7 +324,7 @@ int main(int argc, char **argv)
 #ifndef FILESYS_STUB
     if (removeFileName != NULL)
     {
-        kernel->fileSystem->Remove(removeFileName);
+        kernel->fileSystem->Remove(removeFileName, recursiveRemoveFlag);
     }
     if (copyUnixFileName != NULL && copyNachosFileName != NULL)
     {
@@ -337,16 +336,19 @@ int main(int argc, char **argv)
     }
     if (dirListFlag)
     {
-        kernel->fileSystem->List();
+        kernel->fileSystem->List(listDirectoryName, recursiveListFlag);
     }
     if (mkdirFlag)
     {
-        // MP4 mod tag
-        CreateDirectory(createDirectoryName);
+        kernel->fileSystem->Mkdir(createDirectoryName);
     }
     if (printFileName != NULL)
     {
         Print(printFileName);
+    }
+    if (printHeaderFlag)
+    {
+        kernel->fileSystem->PrintHeader(printHeaderName);
     }
 #endif // FILESYS_STUB
 

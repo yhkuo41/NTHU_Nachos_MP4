@@ -61,6 +61,7 @@ code/test/FS_test1
 code/test/FS_test2
 code/test/DISK_0
 code/test/*.test
+code/test/64MB.txt
 # threads
 threads/*
 !threads/*.S

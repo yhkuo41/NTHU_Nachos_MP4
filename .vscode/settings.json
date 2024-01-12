@@ -9,6 +9,10 @@
         "typeinfo": "cpp",
         "initializer_list": "cpp",
         "array": "cpp",
-        "ostream": "cpp"
+        "ostream": "cpp",
+        "string": "cpp",
+        "type_traits": "cpp",
+        "hashtable": "cpp",
+        "vector": "cpp"
     }
 }

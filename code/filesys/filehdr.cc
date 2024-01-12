@@ -38,9 +38,8 @@
 //----------------------------------------------------------------------
 FileHeader::FileHeader()
 {
-	numBytes = -1;
-	numSectors = -1;
-	memset(dataSectors, -1, sizeof(dataSectors));
+	memset(children, NULL, sizeof(children));
+	clear();
 }
 
 //----------------------------------------------------------------------
@@ -52,7 +51,39 @@ FileHeader::FileHeader()
 //----------------------------------------------------------------------
 FileHeader::~FileHeader()
 {
-	// nothing to do now
+	clear();
+}
+
+int FileHeader::whichLv(int fileSize)
+{
+	for (int i = 0; i < LEVEL_LIMIT; ++i)
+	{
+		if (fileSize <= MAX_SIZE[i])
+		{
+			return i;
+		}
+	}
+	ASSERTNOTREACHED(); // don't support file larger than MAX_SIZE_L3
+}
+
+void FileHeader::clear()
+{
+	numBytes = -1;
+	numDataSectors = -1;
+	memset(dataSectors, INVALID_SECTOR, sizeof(dataSectors));
+	dataSectorMapping.resize(0);
+	for (int i = 0; i < NUM_DIRECT; ++i)
+	{
+		if (children[i])
+		{
+			delete children[i];
+			children[i] = NULL;
+		}
+		else
+		{
+			break;
+		}
+	}
 }
 
 //----------------------------------------------------------------------
@@ -67,17 +98,47 @@ FileHeader::~FileHeader()
 //----------------------------------------------------------------------
 bool FileHeader::Allocate(PersistentBitmap *freeMap, int fileSize)
 {
+	return Allocate(freeMap, fileSize, this->dataSectorMapping);
+}
+
+bool FileHeader::Allocate(PersistentBitmap *freeMap, int fileSize, vector<int> &pSectors)
+{
 	numBytes = fileSize;
-	numSectors = divRoundUp(fileSize, SectorSize);
-	if (freeMap->NumClear() < numSectors)
+	numDataSectors = divRoundUp(fileSize, SectorSize);
+	if (freeMap->NumClear() < numDataSectors)
 	{
 		return FALSE; // not enough space
 	}
-	for (int i = 0; i < numSectors; i++)
+	int lv = whichLv(fileSize);
+	// DEBUG(dbgMp4, "allocate lv " << lv << " file header which requires " << fileSize << " bytes");
+	if (!lv) // direct (original Nachos implementation)
 	{
-		dataSectors[i] = freeMap->FindAndSet();
-		// since we checked that there was enough free space, we expect this to succeed
-		ASSERT(dataSectors[i] >= 0);
+		for (int i = 0; i < numDataSectors; i++)
+		{
+			dataSectors[i] = freeMap->FindAndSet();
+			// since we checked that there was enough free space, we expect this to succeed
+			ASSERT(dataSectors[i] >= 0);
+			this->dataSectorMapping.push_back(dataSectors[i]);
+		}
+	}
+	else
+	{
+		int i = 0;
+		while (fileSize > 0)
+		{
+			dataSectors[i] = freeMap->FindAndSet();
+			ASSERT(dataSectors[i] >= 0);
+			this->children[i] = new FileHeader();
+			int subHdrSize = min(fileSize, MAX_SIZE[lv - 1]);
+			this->children[i]->Allocate(freeMap, subHdrSize, this->dataSectorMapping); // recursive
+			fileSize -= subHdrSize;
+			++i;
+		}
+	}
+
+	if (this->dataSectorMapping != pSectors)
+	{
+		pSectors.insert(pSectors.end(), this->dataSectorMapping.begin(), this->dataSectorMapping.end());
 	}
 	return TRUE;
 }
@@ -90,11 +151,34 @@ bool FileHeader::Allocate(PersistentBitmap *freeMap, int fileSize)
 //----------------------------------------------------------------------
 void FileHeader::Deallocate(PersistentBitmap *freeMap)
 {
-	for (int i = 0; i < numSectors; i++)
+	int lv = whichLv(numBytes);
+	if (!lv) // direct (original Nachos implementation)
 	{
-		ASSERT(freeMap->Test((int)dataSectors[i])); // ought to be marked!
-		freeMap->Clear((int)dataSectors[i]);
+		for (int i = 0; i < numDataSectors; ++i)
+		{
+			ASSERT(freeMap->Test((int)dataSectors[i])); // ought to be marked!
+			freeMap->Clear((int)dataSectors[i]);
+		}
 	}
+	else
+	{
+		for (int i = 0; i < NUM_DIRECT; ++i)
+		{
+			if (dataSectors[i] == INVALID_SECTOR)
+			{
+				break;
+			}
+			ASSERT(children[i]);
+			children[i]->Deallocate(freeMap);
+		}
+	}
+	clear();
+}
+
+void FileHeader::FetchFrom(int sector)
+{
+	ASSERT(this->dataSectorMapping.empty());
+	FetchFrom(sector, this->dataSectorMapping);
 }
 
 //----------------------------------------------------------------------
@@ -103,14 +187,38 @@ void FileHeader::Deallocate(PersistentBitmap *freeMap)
 //
 //	"sector" is the disk sector containing the file header
 //----------------------------------------------------------------------
-void FileHeader::FetchFrom(int sector)
+void FileHeader::FetchFrom(int sector, vector<int> &pSectors)
 {
-	kernel->synchDisk->ReadSector(sector, (char *)this);
-
-	/*
-		MP4 Hint:
-		After you add some in-core informations, you will need to rebuild the header's structure
-	*/
+	int buf[SectorSize / sizeof(int)];
+	kernel->synchDisk->ReadSector(sector, (char *)buf);
+	numBytes = buf[0];
+	numDataSectors = buf[1];
+	memcpy(dataSectors, buf + 2, sizeof(dataSectors));
+	// rebuild in-core part
+	int lv = whichLv(numBytes);
+	if (!lv) // leaf
+	{
+		for (int i = 0; i < numDataSectors; i++)
+		{
+			this->dataSectorMapping.push_back(dataSectors[i]);
+		}
+	}
+	else
+	{
+		for (int i = 0; i < NUM_DIRECT; ++i)
+		{
+			if (dataSectors[i] == INVALID_SECTOR)
+			{
+				break;
+			}
+			this->children[i] = new FileHeader();
+			this->children[i]->FetchFrom(dataSectors[i], this->dataSectorMapping);
+		}
+	}
+	if (this->dataSectorMapping != pSectors)
+	{
+		pSectors.insert(pSectors.end(), this->dataSectorMapping.begin(), this->dataSectorMapping.end());
+	}
 }
 
 //----------------------------------------------------------------------
@@ -121,16 +229,25 @@ void FileHeader::FetchFrom(int sector)
 //----------------------------------------------------------------------
 void FileHeader::WriteBack(int sector)
 {
-	kernel->synchDisk->WriteSector(sector, (char *)this);
-
-	/*
-		MP4 Hint:
-		After you add some in-core informations, you may not want to write all fields into disk.
-		Use this instead:
-		char buf[SectorSize];
-		memcpy(buf + offset, &dataToBeWritten, sizeof(dataToBeWritten));
-		...
-	*/
+	int buf[SectorSize / sizeof(int)];
+	buf[0] = numBytes;
+	buf[1] = numDataSectors;
+	memcpy(buf + 2, dataSectors, sizeof(dataSectors));
+	kernel->synchDisk->WriteSector(sector, (char *)buf);
+	// write disk part
+	int lv = whichLv(numBytes);
+	if (lv)
+	{
+		for (int i = 0; i < NUM_DIRECT; ++i)
+		{
+			if (dataSectors[i] == INVALID_SECTOR)
+			{
+				break;
+			}
+			ASSERT(children[i]);
+			children[i]->WriteBack(dataSectors[i]);
+		}
+	}
 }
 
 //----------------------------------------------------------------------
@@ -144,7 +261,10 @@ void FileHeader::WriteBack(int sector)
 //----------------------------------------------------------------------
 int FileHeader::ByteToSector(int offset)
 {
-	return (dataSectors[offset / SectorSize]);
+	int logicalSector = offset / SectorSize;
+	int sectorsSz = static_cast<int>(dataSectorMapping.size());
+	ASSERT(logicalSector >= 0 && logicalSector < sectorsSz && sectorsSz == numDataSectors);
+	return dataSectorMapping[logicalSector];
 }
 
 //----------------------------------------------------------------------
@@ -161,32 +281,59 @@ int FileHeader::FileLength()
 // 	Print the contents of the file header, and the contents of all
 //	the data blocks pointed to by the file header.
 //----------------------------------------------------------------------
-void FileHeader::Print()
+void FileHeader::Print(bool printContent)
 {
-	int i, j, k;
-	char *data = new char[SectorSize];
-
-	printf("FileHeader contents.  File size: %d.  File blocks:\n", numBytes);
-	for (i = 0; i < numSectors; i++)
+	cout << "FileHeader contents:" << endl
+		 << "1. File size: " << numBytes << " bytes (" << numDataSectors << " sectors)" << endl
+		 << "2. FileHeader size in disk: " << (sizeof(FileHeader) - sizeof(dataSectorMapping) - sizeof(children)) << " bytes" << endl
+		 << "3. FileHeader size in memory: " << (sizeof(FileHeader) + dataSectorMapping.size() * sizeof(int) + sizeof(children)) << " bytes" << endl;
+	if (printContent)
 	{
-		printf("%d ", dataSectors[i]);
-	}
-	printf("\nFile contents:\n");
-	for (i = k = 0; i < numSectors; i++)
-	{
-		kernel->synchDisk->ReadSector(dataSectors[i], data);
-		for (j = 0; (j < SectorSize) && (k < numBytes); j++, k++)
+		cout << "4. Data blocks: " << endl;
+		for (int i = 0; i < numDataSectors; ++i)
 		{
-			if ('\040' <= data[j] && data[j] <= '\176') // isprint(data[j])
-			{
-				printf("%c", data[j]);
-			}
-			else
-			{
-				printf("\\%x", (unsigned char)data[j]);
-			}
+			ASSERT(dataSectorMapping[i] != INVALID_SECTOR);
+			cout << dataSectorMapping[i] << " ";
 		}
-		printf("\n");
+		printf("\nFile contents:\n");
 	}
-	delete[] data;
+
+	int lv = whichLv(numBytes);
+	if (!lv) // leaf
+	{
+		if (!printContent)
+		{
+			return;
+		}
+		char *data = new char[SectorSize];
+		for (int i = 0, k = 0; i < numDataSectors; ++i)
+		{
+			kernel->synchDisk->ReadSector(dataSectors[i], data);
+			for (int j = 0; (j < SectorSize) && (k < numBytes); j++, k++)
+			{
+				if ('\040' <= data[j] && data[j] <= '\176') // isprint(data[j])
+				{
+					printf("%c", data[j]);
+				}
+				else
+				{
+					printf("\\%x", (unsigned char)data[j]);
+				}
+			}
+			printf("\n");
+		}
+		delete[] data;
+	}
+	else
+	{
+		for (int i = 0; i < NUM_DIRECT; ++i)
+		{
+			if (dataSectors[i] == INVALID_SECTOR)
+			{
+				break;
+			}
+			ASSERT(children[i]);
+			children[i]->Print(printContent);
+		}
+	}
 }

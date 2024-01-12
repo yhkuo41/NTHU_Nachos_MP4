@@ -62,7 +62,6 @@
 // supports extensible files, the directory size sets the maximum number
 // of files that can be loaded onto the disk.
 #define FreeMapFileSize (NumSectors / BitsInByte)
-#define NumDirEntries 10
 #define DirectoryFileSize (sizeof(DirectoryEntry) * NumDirEntries)
 
 //----------------------------------------------------------------------
@@ -98,7 +97,6 @@ FileSystem::FileSystem(bool format)
         // of the directory and bitmap files.  There better be enough space!
         ASSERT(mapHdr->Allocate(freeMap, FreeMapFileSize));
         ASSERT(dirHdr->Allocate(freeMap, DirectoryFileSize));
-
         // Flush the bitmap and directory FileHeaders back to disk
         // We need to do this before we can "Open" the file, since open
         // reads the file header off of disk (and currently the disk has garbage
@@ -138,6 +136,11 @@ FileSystem::FileSystem(bool format)
         // the bitmap and directory; these are left open while Nachos is running
         freeMapFile = new OpenFile(FreeMapSector);
         directoryFile = new OpenFile(DirectorySector);
+    }
+
+    for (int i = 0; i < FILE_OPEN_LIMIT; i++)
+    {
+        OpenFileTable[i] = NULL;
     }
 }
 
@@ -181,54 +184,7 @@ FileSystem::~FileSystem()
 //----------------------------------------------------------------------
 bool FileSystem::Create(char *name, int initialSize)
 {
-    Directory *directory;
-    PersistentBitmap *freeMap;
-    FileHeader *hdr;
-    int sector;
-    bool success;
-
-    DEBUG(dbgFile, "Creating file " << name << " size " << initialSize);
-
-    directory = new Directory(NumDirEntries);
-    directory->FetchFrom(directoryFile);
-
-    if (directory->Find(name) != -1)
-    {
-        success = FALSE; // file is already in directory
-    }
-    else
-    {
-        freeMap = new PersistentBitmap(freeMapFile, NumSectors);
-        sector = freeMap->FindAndSet(); // find a sector to hold the file header
-        if (sector == -1)
-        {
-            success = FALSE; // no free block for file header
-        }
-        else if (!directory->Add(name, sector))
-        {
-            success = FALSE; // no space in directory
-        }
-        else
-        {
-            hdr = new FileHeader;
-            if (!hdr->Allocate(freeMap, initialSize))
-            {
-                success = FALSE; // no space on disk for data
-            }
-            else
-            {
-                success = TRUE;
-                // everthing worked, flush all changes back to disk
-                hdr->WriteBack(sector);
-                directory->WriteBack(directoryFile);
-                freeMap->WriteBack(freeMapFile);
-            }
-            delete hdr;
-        }
-        delete freeMap;
-    }
-    delete directory;
-    return success;
+    return createFileOrDir(name, FILE, initialSize);
 }
 
 //----------------------------------------------------------------------
@@ -242,19 +198,14 @@ bool FileSystem::Create(char *name, int initialSize)
 //----------------------------------------------------------------------
 OpenFile *FileSystem::Open(char *name)
 {
-    Directory *directory = new Directory(NumDirEntries);
-    OpenFile *openFile = NULL;
-    int sector;
-
-    DEBUG(dbgFile, "Opening file" << name);
-    directory->FetchFrom(directoryFile);
-    sector = directory->Find(name);
-    if (sector >= 0)
+    FileFinder finder = FileFinder();
+    finder.find(name, FILE, directoryFile);
+    if (!finder.exist)
     {
-        openFile = new OpenFile(sector); // name was found in directory
+        finder.find(name, DIR, directoryFile);
     }
-    delete directory;
-    return openFile; // return NULL if not found
+    ASSERT(finder.exist && finder.fhSector >= 0);
+    return new OpenFile(finder.fhSector);
 }
 
 //----------------------------------------------------------------------
@@ -270,35 +221,67 @@ OpenFile *FileSystem::Open(char *name)
 //
 //	"name" -- the text name of the file to be removed
 //----------------------------------------------------------------------
-bool FileSystem::Remove(char *name)
+bool FileSystem::Remove(const char *name, bool recursive)
 {
-    Directory *directory;
-    PersistentBitmap *freeMap;
-    FileHeader *fileHdr;
-    int sector;
-
-    directory = new Directory(NumDirEntries);
-    directory->FetchFrom(directoryFile);
-    sector = directory->Find(name);
-    if (sector == -1)
+    if (recursive)
     {
-        delete directory;
-        return FALSE; // file not found
+        return recursivelyRemove(name);
     }
-    fileHdr = new FileHeader;
-    fileHdr->FetchFrom(sector);
+    FileFinder finder = FileFinder();
+    finder.find(name, FILE, directoryFile);
+    if (!finder.exist)
+    {
+        return FALSE;
+    }
+    PersistentBitmap *freeMap = new PersistentBitmap(freeMapFile, NumSectors);
+    returnSectorsToFreeMap(finder.fhSector, freeMap);
+    OpenFile *openPfh = new OpenFile(finder.pFhSector);
+    Directory *pDir = new Directory(NumDirEntries);
+    pDir->FetchFrom(openPfh);
+    ASSERT(pDir->Remove(finder.filename.c_str(), FILE));
 
-    freeMap = new PersistentBitmap(freeMapFile, NumSectors);
-
-    fileHdr->Deallocate(freeMap); // remove data blocks
-    freeMap->Clear(sector);       // remove header block
-    directory->Remove(name);
-
-    freeMap->WriteBack(freeMapFile);     // flush to disk
-    directory->WriteBack(directoryFile); // flush to disk
-    delete fileHdr;
-    delete directory;
+    freeMap->WriteBack(freeMapFile);
+    pDir->WriteBack(openPfh);
+    DEBUG(dbgMp4, "remove " << name << " (single file)");
     delete freeMap;
+    delete openPfh;
+    delete pDir;
+    return TRUE;
+}
+
+bool FileSystem::recursivelyRemove(const char *name)
+{
+    FileFinder finder = FileFinder();
+    finder.find(name, DIR, directoryFile);
+    if (!finder.exist)
+    {
+        return Remove(name, FALSE); // remove single file
+    };
+    // remove all files/dirs in this dir
+    PersistentBitmap *freeMap = new PersistentBitmap(freeMapFile, NumSectors);
+    OpenFile *openfh = new OpenFile(finder.fhSector);
+    Directory *dir = new Directory(NumDirEntries);
+    dir->FetchFrom(openfh);
+    ASSERT(dir->RemoveAll(freeMap));
+    if (finder.pFhSector == INVALID_SECTOR)
+    { // root dir, directly write back after removing all files/dirs
+        dir->WriteBack(directoryFile);
+    }
+    else
+    { // other dir, remove itself
+        returnSectorsToFreeMap(finder.fhSector, freeMap);
+        OpenFile *openPfh = new OpenFile(finder.pFhSector);
+        Directory *pDir = new Directory(NumDirEntries);
+        pDir->FetchFrom(openPfh);
+        ASSERT(pDir->Remove(finder.filename.c_str(), DIR));
+        pDir->WriteBack(openPfh);
+        delete openPfh;
+        delete pDir;
+    }
+    freeMap->WriteBack(freeMapFile);
+    delete freeMap;
+    delete openfh;
+    delete dir;
     return TRUE;
 }
 
@@ -306,12 +289,29 @@ bool FileSystem::Remove(char *name)
 // FileSystem::List
 // 	List all the files in the file system directory.
 //----------------------------------------------------------------------
-void FileSystem::List()
+void FileSystem::List(char *name, bool recursive)
 {
-    Directory *directory = new Directory(NumDirEntries);
-    directory->FetchFrom(directoryFile);
-    directory->List();
-    delete directory;
+    FileFinder finder = FileFinder();
+    finder.find(name, DIR, directoryFile);
+    // file not exist
+    if (!finder.exist)
+    {
+        return;
+    }
+    ASSERT(finder.fhSector != INVALID_SECTOR);
+    OpenFile *f = new OpenFile(finder.fhSector);
+    Directory *dir = new Directory(NumDirEntries);
+    dir->FetchFrom(f);
+    delete f;
+    if (recursive)
+    {
+        dir->RecursivelyList(0);
+    }
+    else
+    {
+        dir->List();
+    }
+    delete dir;
 }
 
 //----------------------------------------------------------------------
@@ -349,23 +349,215 @@ void FileSystem::Print()
     delete directory;
 }
 
+void FileSystem::PrintHeader(char *name)
+{
+    FileFinder finder = FileFinder();
+    finder.find(name, DIR, directoryFile);
+    if (!finder.exist)
+    {
+        finder.find(name, FILE, directoryFile);
+    }
+    ASSERT(finder.fhSector != INVALID_SECTOR);
+    FileHeader *dirHdr = new FileHeader();
+    dirHdr->FetchFrom(finder.fhSector);
+    dirHdr->Print(FALSE);
+    delete dirHdr;
+}
+
 OpenFileId FileSystem::OpenAFile(char *name)
 {
-    // TODO
+    OpenFileId id;
+    for (id = 0; id < 20; ++id)
+    {
+        if (OpenFileTable[id] == NULL)
+        {
+            break;
+        }
+    }
+    // exceed the opened file limit
+    if (id == 20)
+    {
+        return -1;
+    }
+    OpenFileTable[id] = Open(name);
+    return id;
 }
 
 int FileSystem::WriteFile_(char *buffer, int size, OpenFileId id)
 {
-    // TODO
+    if (buffer != NULL && size >= 0 && isValidFileId(id))
+    {
+        return OpenFileTable[id]->Write(buffer, size);
+    }
+    return -1;
 }
 
 int FileSystem::ReadFile(char *buffer, int size, OpenFileId id)
 {
-    // TODO
+    if (buffer != NULL && size >= 0 && isValidFileId(id))
+    {
+        return OpenFileTable[id]->Read(buffer, size);
+    }
+    return -1;
 }
 
 int FileSystem::CloseFile(OpenFileId id)
 {
-    // TODO
+    if (isValidFileId(id))
+    {
+        delete OpenFileTable[id];
+        OpenFileTable[id] = NULL;
+        return 1;
+    }
+    return -1;
+}
+
+bool FileSystem::isValidFileId(OpenFileId id)
+{
+    return id >= 0 && id < FILE_OPEN_LIMIT && OpenFileTable[id] != NULL;
+}
+
+bool FileSystem::Mkdir(char *name)
+{
+    return createFileOrDir(name, DIR, -1);
+}
+
+bool FileSystem::createFileOrDir(char *name, bool isDir, int initialSize)
+{
+    // 1. find the parent dir
+    FileFinder finder = FileFinder();
+    finder.find(name, isDir, directoryFile);
+    if (finder.exist)
+    {
+        DEBUG(dbgMp4, "File or dir exist, cannot create: " << name);
+        return FALSE;
+    }
+    ASSERT(finder.pFhSector != INVALID_SECTOR); // parent dir should exist
+
+    // 2. add file header to the parent dir
+    PersistentBitmap *freeMap = new PersistentBitmap(freeMapFile, NumSectors);
+    int sector = freeMap->FindAndSet();
+    ASSERT(sector >= 0);
+    OpenFile *openPfh = new OpenFile(finder.pFhSector);
+    Directory *pDir = new Directory(NumDirEntries);
+    pDir->FetchFrom(openPfh);
+
+    ASSERT(pDir->Add(finder.filename.c_str(), sector, isDir)) // assume always have space
+
+    // 3. allocate data blocks
+    int size = isDir ? NumDirEntries * sizeof(DirectoryEntry) : initialSize;
+    ASSERT(size >= 0);
+    FileHeader *fh = new FileHeader();
+    ASSERT(fh->Allocate(freeMap, size));
+
+    // 4. write back
+    fh->WriteBack(sector);
+    pDir->WriteBack(openPfh);
+    freeMap->WriteBack(freeMapFile);
+    if (isDir)
+    {
+        Directory *dir = new Directory(NumDirEntries);
+        OpenFile *openFh = new OpenFile(sector);
+        dir->WriteBack(openFh);
+        delete dir;
+        delete openFh;
+    }
+    delete freeMap;
+    delete openPfh;
+    delete pDir;
+    delete fh;
+    return TRUE;
+}
+
+void FileSystem::returnSectorsToFreeMap(int fhSector, PersistentBitmap *freeMap)
+{
+    ASSERT(freeMap->Test(fhSector));
+    freeMap->Clear(fhSector); // return header sector
+    FileHeader *fh = new FileHeader();
+    fh->FetchFrom(fhSector);
+    fh->Deallocate(freeMap); // return data sectors
+    delete fh;
+}
+
+FileFinder::FileFinder() : exist(FALSE), pFhSector(INVALID_SECTOR), fhSector(INVALID_SECTOR) {}
+
+vector<string> FileFinder::splitPath(const char *str, bool &exceedPathLenLimit)
+{
+    vector<string> result;
+    string token;
+    int i = 0;
+    while (*str)
+    {
+        if (*str == '/')
+        {
+            result.push_back(token);
+            token.clear();
+        }
+        else
+        {
+            token += *str;
+        }
+        ++str;
+        ++i;
+    }
+    exceedPathLenLimit = i >= PATH_NAME_MAX_LEN;
+    result.push_back(token);
+    return result;
+}
+
+void FileFinder::find(const char *name, bool isDir, OpenFile *root)
+{
+    bool exceedPathLenLimit = FALSE;
+    vector<string> path = splitPath(name, exceedPathLenLimit);
+    filename = path.back();
+    if (exceedPathLenLimit)
+    {
+        return;
+    }
+    // the file is the root dir
+    if (!strcmp(name, "/"))
+    {
+        ASSERT(isDir);
+        exist = true;
+        fhSector = DirectorySector;
+        return;
+    }
+    OpenFile *openPfh = root; // open parent file header
+    Directory *pDir = new Directory(NumDirEntries);
+    int pathSz = static_cast<int>(path.size());
+    for (int i = 1; i < pathSz; ++i)
+    {
+        pDir->FetchFrom(openPfh);
+        // set pfh sector to previous fh sector
+        if (i == 1)
+        {
+            pFhSector = DirectorySector;
+        }
+        else
+        {
+            pFhSector = fhSector;
+        }
+        // find dir until the leaf
+        fhSector = pDir->Find(path[i].c_str(), (i == pathSz - 1 ? isDir : DIR));
+        if (fhSector == INVALID_SECTOR)
+        {
+            deleteOpenFile(openPfh, root);
+            delete pDir;
+            return;
+        }
+        deleteOpenFile(openPfh, root);
+        openPfh = new OpenFile(fhSector);
+    }
+    exist = true;
+    deleteOpenFile(openPfh, root);
+    delete pDir;
+}
+
+void FileFinder::deleteOpenFile(OpenFile *openfile, OpenFile *root)
+{
+    if (openfile != NULL && openfile != root)
+    {
+        delete openfile;
+    }
 }
 #endif // FILESYS_STUB
