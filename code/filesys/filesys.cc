@@ -344,10 +344,10 @@ void FileSystem::PrintHeader(char *name)
         finder.find(name, FILE, directoryFile);
     }
     ASSERT(finder.fhSector != INVALID_SECTOR);
-    FileHeader *dirHdr = new FileHeader();
-    dirHdr->FetchFrom(finder.fhSector);
-    dirHdr->Print(FALSE);
-    delete dirHdr;
+    FileHeader *hdr = new FileHeader();
+    hdr->FetchFrom(finder.fhSector);
+    hdr->Print(FALSE);
+    delete hdr;
 }
 
 OpenFileId FileSystem::OpenAFile(char *name)
