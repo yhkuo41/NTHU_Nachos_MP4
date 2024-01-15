@@ -72,3 +72,5 @@ userprog/*
 !userprog/*.S
 !userprog/*.cc
 !userprog/*.h
+
+.idea
